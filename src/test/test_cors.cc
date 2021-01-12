@@ -11,19 +11,8 @@ extern "C"{
 #define S3_BUCKET_NAME "s3testgw.fcgi"
 #define SWIFT_BUCKET_NAME "swift3testgw.fcgi"
 #define BUCKET_URL \
-  ((g_test->get_key_type() == KEY_TYPE_S3)?(string("/"S3_BUCKET_NAME)):(string("/swift/v1/"SWIFT_BUCKET_NAME)))
-#define GTEST
-#ifdef GTEST
+  ((g_test->get_key_type() == KEY_TYPE_S3)?(string("/" S3_BUCKET_NAME)):(string("/swift/v1/" SWIFT_BUCKET_NAME)))
 #include <gtest/gtest.h>
-#else
-#define TEST(x, y) void y()
-#define ASSERT_EQ(v, s) if(v != s)cout << "Error at " << __LINE__ << "(" << #v << "!= " << #s << "\n"; \
-                                else cout << "(" << #v << "==" << #s << ") PASSED\n";
-#define EXPECT_EQ(v, s) ASSERT_EQ(v, s)
-#define ASSERT_TRUE(c) if(c)cout << "Error at " << __LINE__ << "(" << #c << ")" << "\n"; \
-                          else cout << "(" << #c << ") PASSED\n";
-#define EXPECT_TRUE(c) ASSERT_TRUE(c) 
-#endif
 #include "common/code_environment.h"
 #include "common/ceph_argparse.h"
 #include "common/Finisher.h"
@@ -66,7 +55,7 @@ class test_cors_helper {
     unsigned resp_code;
     key_type kt;
   public:
-    test_cors_helper() : resp_data(NULL), kt(KEY_TYPE_UNDEFINED){
+    test_cors_helper() : curl_inst(NULL), resp_data(NULL), resp_code(0), kt(KEY_TYPE_UNDEFINED){
       curl_global_init(CURL_GLOBAL_ALL);
     }
     ~test_cors_helper(){
@@ -114,8 +103,7 @@ int test_cors_helper::extract_input(unsigned argc, char *argv[]){
       ERR_CHECK_NEXT_PARAM(port);
     }else return -1;
   }
-  if(host.length() <= 0 ||
-     creds.length() <= 0)
+  if(host.empty() || creds.empty())
     return -1;
   return 0;
 }
@@ -170,7 +158,7 @@ static void calc_hmac_sha1(const char *key, int key_len,
   buf_to_hex((unsigned char *)dest, CEPH_CRYPTO_HMACSHA1_DIGESTSIZE, hex_str);
 }
 
-static int get_s3_auth(string method, string creds, string date, string res, string& out){
+static int get_s3_auth(const string &method, string creds, const string &date, const string &res, string& out){
   string aid, secret, auth_hdr;
   size_t off = creds.find(":");
   out = "";
@@ -285,13 +273,13 @@ Finisher *finisher;
 
 static int create_bucket(void){
   if(g_test->get_key_type() == KEY_TYPE_S3){
-    g_test->send_request(string("PUT"), string("/"S3_BUCKET_NAME));
+    g_test->send_request(string("PUT"), string("/" S3_BUCKET_NAME));
     if(g_test->get_resp_code() != 200U){
       cout << "Error creating bucket, http code " << g_test->get_resp_code();
       return -1;
     }
   }else if(g_test->get_key_type() == KEY_TYPE_SWIFT){
-    g_test->send_request(string("PUT"), string("/swift/v1/"SWIFT_BUCKET_NAME));
+    g_test->send_request(string("PUT"), string("/swift/v1/" SWIFT_BUCKET_NAME));
     if(g_test->get_resp_code() != 201U){
       cout << "Error creating bucket, http code " << g_test->get_resp_code();
       return -1;
@@ -302,13 +290,13 @@ static int create_bucket(void){
 
 static int delete_bucket(void){
   if(g_test->get_key_type() == KEY_TYPE_S3){
-    g_test->send_request(string("DELETE"), string("/"S3_BUCKET_NAME));
+    g_test->send_request(string("DELETE"), string("/" S3_BUCKET_NAME));
     if(g_test->get_resp_code() != 204U){
       cout << "Error deleting bucket, http code " << g_test->get_resp_code();
       return -1;
     }
   }else if(g_test->get_key_type() == KEY_TYPE_SWIFT){
-    g_test->send_request(string("DELETE"), string("/swift/v1/"SWIFT_BUCKET_NAME));
+    g_test->send_request(string("DELETE"), string("/swift/v1/" SWIFT_BUCKET_NAME));
     if(g_test->get_resp_code() != 204U){
       cout << "Error deleting bucket, http code " << g_test->get_resp_code();
       return -1;
@@ -357,7 +345,7 @@ void send_cors(set<string> o, set<string> h,
     s3 = static_cast<RGWCORSConfiguration_S3 *>(&config);
     s3->to_xml(ss);
 
-    g_test->send_request(string("PUT"), string("/"S3_BUCKET_NAME"?cors"), cors_read_xml, 
+    g_test->send_request(string("PUT"), string("/" S3_BUCKET_NAME "?cors"), cors_read_xml, 
                          (void *)&ss, ss.str().length());
   }else if(g_test->get_key_type() == KEY_TYPE_SWIFT){
     set<string>::iterator it;
@@ -392,7 +380,7 @@ void send_cors(set<string> o, set<string> h,
     //const char *data = "1";
     stringstream ss;
     ss << "1";
-    g_test->send_request(string("POST"), string("/swift/v1/"SWIFT_BUCKET_NAME), cors_read_xml, 
+    g_test->send_request(string("POST"), string("/swift/v1/" SWIFT_BUCKET_NAME), cors_read_xml, 
                          (void *)&ss, 1);
   }
 }
@@ -400,7 +388,7 @@ void send_cors(set<string> o, set<string> h,
 TEST(TestCORS, getcors_firsttime){
   if(g_test->get_key_type() == KEY_TYPE_SWIFT)return;
   ASSERT_EQ(0, create_bucket());
-  g_test->send_request(string("GET"), string("/"S3_BUCKET_NAME"?cors"));
+  g_test->send_request(string("GET"), string("/" S3_BUCKET_NAME "?cors"));
   EXPECT_EQ(404U, g_test->get_resp_code());
   ASSERT_EQ(0, delete_bucket());
 }
@@ -418,7 +406,7 @@ TEST(TestCORS, putcors_firsttime){
 
   /*Now get the CORS and check if its fine*/
   if(g_test->get_key_type() == KEY_TYPE_S3){
-    g_test->send_request(string("GET"), string("/"S3_BUCKET_NAME"?cors"));
+    g_test->send_request(string("GET"), string("/" S3_BUCKET_NAME "?cors"));
     EXPECT_EQ(200U, g_test->get_resp_code());
 
     RGWCORSRule *r = xml_to_cors_rule(string("example.com"));
@@ -854,7 +842,7 @@ TEST(TestCORS, optionscors_test_options_7){
 TEST(TestCORS, deletecors_firsttime){
   if(g_test->get_key_type() == KEY_TYPE_SWIFT)return;
   ASSERT_EQ(0, create_bucket());
-  g_test->send_request("DELETE", "/"S3_BUCKET_NAME"?cors");
+  g_test->send_request("DELETE", "/" S3_BUCKET_NAME "?cors");
   EXPECT_EQ(204U, g_test->get_resp_code());
   ASSERT_EQ(0, delete_bucket());
 }
@@ -870,11 +858,11 @@ TEST(TestCORS, deletecors_test){
   send_cors(origins, h, e, flags, CORS_MAX_AGE_INVALID);
   EXPECT_EQ(((g_test->get_key_type() == KEY_TYPE_SWIFT)?202U:200U), g_test->get_resp_code());
 
-  g_test->send_request("GET", "/"S3_BUCKET_NAME"?cors");
+  g_test->send_request("GET", "/" S3_BUCKET_NAME "?cors");
   EXPECT_EQ(200U, g_test->get_resp_code());
-  g_test->send_request("DELETE", "/"S3_BUCKET_NAME"?cors");
+  g_test->send_request("DELETE", "/" S3_BUCKET_NAME "?cors");
   EXPECT_EQ(204U, g_test->get_resp_code());
-  g_test->send_request("GET", "/"S3_BUCKET_NAME"?cors");
+  g_test->send_request("GET", "/" S3_BUCKET_NAME "?cors");
   EXPECT_EQ(404U, g_test->get_resp_code());
   ASSERT_EQ(0, delete_bucket());
 }
@@ -883,7 +871,9 @@ int main(int argc, char *argv[]){
   vector<const char*> args;
   argv_to_vec(argc, (const char **)argv, args);
 
-  global_init(NULL, args, CEPH_ENTITY_TYPE_CLIENT, CODE_ENVIRONMENT_UTILITY, 0);
+  auto cct = global_init(NULL, args, CEPH_ENTITY_TYPE_CLIENT,
+                         CODE_ENVIRONMENT_UTILITY,
+			 CINIT_FLAG_NO_DEFAULT_CONFIG_FILE);
   common_init_finish(g_ceph_context);
   g_test = new test_cors_helper();
   finisher = new Finisher(g_ceph_context);
@@ -904,6 +894,8 @@ int main(int argc, char *argv[]){
   }
 #endif
   finisher->stop();
+  delete g_test;
+  delete finisher;
   return 0;
 }
 

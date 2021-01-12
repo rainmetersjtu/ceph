@@ -36,6 +36,17 @@ Options
 
    Debug mode: like ``-f``, but also send all log output to stderr.
 
+.. option:: --setuser userorgid
+
+   Set uid after starting.  If a username is specified, the user
+   record is looked up to get a uid and a gid, and the gid is also set
+   as well, unless --setgroup is also specified.
+
+.. option:: --setgroup grouporgid
+
+   Set gid after starting.  If a group name is specified the group
+   record is looked up to get a gid.
+
 .. option:: -c ceph.conf, --conf=ceph.conf
 
    Use *ceph.conf* configuration file instead of the default
@@ -53,7 +64,7 @@ Options
    - A list of monitors and their addresses.  This list of monitors
      can come from a monmap (``--monmap <path>``), the ``mon host``
      configuration value (in *ceph.conf* or via ``-m
-     host1,host2,...``), or ``mon addr`` lines in *ceph.conf*.  If this
+     host1,host2,...``), or (for backward compatibility) the deprecated ``mon addr`` lines in *ceph.conf*.  If this
      monitor is to be part of the initial monitor quorum for a new
      Ceph cluster, then it must be included in the initial list,
      matching either the name or address of a monitor in the list.
@@ -66,6 +77,11 @@ Options
 
    Specify a keyring for use with ``--mkfs``.
 
+.. option:: --no-config-file
+
+    Signal that we don't want to rely on a *ceph.conf*, either user provided
+    or the default, to run the daemon.  This will entail providing all
+    necessary options to the daemon as arguments.
 
 Availability
 ============

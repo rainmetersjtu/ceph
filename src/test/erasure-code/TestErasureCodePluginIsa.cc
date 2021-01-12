@@ -13,24 +13,25 @@
  */
 
 #include <errno.h>
+#include <stdlib.h>
 #include "arch/probe.h"
 #include "arch/intel.h"
-#include "global/global_init.h"
 #include "erasure-code/ErasureCodePlugin.h"
-#include "common/ceph_argparse.h"
 #include "global/global_context.h"
+#include "common/config_proxy.h"
 #include "gtest/gtest.h"
 
 TEST(ErasureCodePlugin, factory)
 {
   ErasureCodePluginRegistry &instance = ErasureCodePluginRegistry::instance();
   ErasureCodeProfile profile;
-  profile["directory"] = ".libs";
   {
     ErasureCodeInterfaceRef erasure_code;
     EXPECT_FALSE(erasure_code);
-    EXPECT_EQ(-EIO, instance.factory("no-isa", profile,
-                                        &erasure_code, &cerr));
+    EXPECT_EQ(-EIO, instance.factory("no-isa",
+				     g_conf().get_val<std::string>("erasure_code_dir"),
+				     profile,
+				     &erasure_code, &cerr));
     EXPECT_FALSE(erasure_code);
   }
   const char *techniques[] = {
@@ -41,22 +42,12 @@ TEST(ErasureCodePlugin, factory)
     ErasureCodeInterfaceRef erasure_code;
     profile["technique"] = *technique;
     EXPECT_FALSE(erasure_code);
-    EXPECT_EQ(0, instance.factory("isa", profile,
+    EXPECT_EQ(0, instance.factory("isa",
+				  g_conf().get_val<std::string>("erasure_code_dir"),
+				  profile,
                                   &erasure_code, &cerr));
-    EXPECT_TRUE(erasure_code);
+    EXPECT_TRUE(erasure_code.get());
   }
-}
-
-int main(int argc, char **argv)
-{
-  vector<const char*> args;
-  argv_to_vec(argc, (const char **)argv, args);
-
-  global_init(NULL, args, CEPH_ENTITY_TYPE_CLIENT, CODE_ENVIRONMENT_UTILITY, 0);
-  common_init_finish(g_ceph_context);
-
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
 }
 
 /*

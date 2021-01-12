@@ -19,10 +19,9 @@
 #include "arch/probe.h"
 #include "arch/intel.h"
 #include "arch/arm.h"
-#include "global/global_init.h"
-#include "common/ceph_argparse.h"
 #include "global/global_context.h"
 #include "gtest/gtest.h"
+
 
 #define FLAGS_SIZE 4096
 
@@ -70,7 +69,7 @@ TEST(Arch, all)
   expected = strstr(flags, " sse4_1 ") ? 1 : 0;
   EXPECT_EQ(expected, ceph_arch_intel_sse41);
 
-  expected = (strstr(flags, " sse3 ") || strstr(flags, " ssse3 ")) ? 1 : 0;
+  expected = (strstr(flags, " sse3 ") || strstr(flags, " ssse3 ") || strstr(flags, " pni ")) ? 1 : 0;
   EXPECT_EQ(expected, ceph_arch_intel_sse3);
 
   expected = strstr(flags, " ssse3 ") ? 1 : 0;
@@ -82,18 +81,6 @@ TEST(Arch, all)
 #endif
 
 #endif
-}
-
-int main(int argc, char **argv)
-{
-  vector<const char*> args;
-  argv_to_vec(argc, (const char **)argv, args);
-
-  global_init(NULL, args, CEPH_ENTITY_TYPE_CLIENT, CODE_ENVIRONMENT_UTILITY, 0);
-  common_init_finish(g_ceph_context);
-
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
 }
 
 

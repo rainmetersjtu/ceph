@@ -1,3 +1,4 @@
+// -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
 #ifndef _CEPH_UUID_H
 #define _CEPH_UUID_H
 
@@ -6,55 +7,90 @@
  */
 
 #include "encoding.h"
-#include <ostream>
+#include "random.h"
 
-extern "C" {
-#include <uuid/uuid.h>
-#include <unistd.h>
+#include <ostream>
+#include <random>
+
+#include <boost/uuid/uuid.hpp>
+#include <boost/uuid/uuid_generators.hpp>
+#include <boost/uuid/uuid_io.hpp>
+
+namespace ceph {
+  class Formatter;
 }
 
 struct uuid_d {
-  uuid_t uuid;
+  boost::uuids::uuid uuid;
 
   uuid_d() {
-    memset(&uuid, 0, sizeof(uuid));
+    boost::uuids::nil_generator gen;
+    uuid = gen();
   }
 
   bool is_zero() const {
-    return uuid_is_null(uuid);
+    return uuid.is_nil();
   }
 
   void generate_random() {
-    uuid_generate(uuid);
+    random_device_t rng;
+    boost::uuids::basic_random_generator gen(rng);
+    uuid = gen();
   }
   
   bool parse(const char *s) {
-    return uuid_parse(s, uuid) == 0;
+    try {
+      boost::uuids::string_generator gen;
+      uuid = gen(s);
+      return true;
+    } catch (std::runtime_error& e) {
+      return false;
+    }
   }
-  void print(char *s) {
-    return uuid_unparse(uuid, s);
+  void print(char *s) const {
+    memcpy(s, boost::uuids::to_string(uuid).c_str(), 37);
   }
-  
-  void encode(bufferlist& bl) const {
-    ::encode_raw(uuid, bl);
+
+ std::string to_string() const {
+    return boost::uuids::to_string(uuid);
   }
-  void decode(bufferlist::iterator& p) const {
-    ::decode_raw(uuid, p);
+
+  const char *bytes() const {
+    return (const char*)uuid.data;
   }
+
+  void encode(::ceph::buffer::list::contiguous_appender& p) const {
+    p.append(reinterpret_cast<const char *>(&uuid), sizeof(uuid));
+  }
+
+  void bound_encode(size_t& p) const {
+    p += sizeof(uuid);
+  }
+
+  void decode(::ceph::buffer::ptr::const_iterator& p) {
+    assert((p.get_end() - p.get_pos()) >= (int)sizeof(*this));
+    memcpy((char *)this, p.get_pos_add(sizeof(*this)), sizeof(*this));
+  }
+
+  void dump(ceph::Formatter *f) const;
+  static void generate_test_instances(std::list<uuid_d*>& o);
 };
-WRITE_CLASS_ENCODER(uuid_d)
+WRITE_CLASS_DENC_BOUNDED(uuid_d)
 
 inline std::ostream& operator<<(std::ostream& out, const uuid_d& u) {
   char b[37];
-  uuid_unparse(u.uuid, b);
+  u.print(b);
   return out << b;
 }
 
 inline bool operator==(const uuid_d& l, const uuid_d& r) {
-  return uuid_compare(l.uuid, r.uuid) == 0;
+  return l.uuid == r.uuid;
 }
 inline bool operator!=(const uuid_d& l, const uuid_d& r) {
-  return uuid_compare(l.uuid, r.uuid) != 0;
+  return l.uuid != r.uuid;
+}
+inline bool operator<(const uuid_d& l, const uuid_d& r) {
+  return l.to_string() < r.to_string();
 }
 
 

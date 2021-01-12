@@ -9,7 +9,7 @@
 Synopsis
 ========
 
-| **ceph-mds** -i *name* [[ --hot-standby [*rank*] ]|[--journal_check *rank*]]
+| **ceph-mds** -i <*ID*> [flags]
 
 
 Description
@@ -27,12 +27,6 @@ it a logical rank, or put it in a standby pool to take over for
 another daemon that crashes. Some of the specified options can cause
 other behaviors.
 
-If you specify hot-standby or journal-check, you must either specify
-the rank on the command line, or specify one of the
-mds_standby_for_[rank|name] parameters in the config.  The command
-line specification overrides the config, and specifying the rank
-overrides specifying the name.
-
 
 Options
 =======
@@ -47,6 +41,17 @@ Options
 
    Debug mode: like ``-f``, but also send all log output to stderr.
 
+.. option:: --setuser userorgid
+
+   Set uid after starting.  If a username is specified, the user
+   record is looked up to get a uid and a gid, and the gid is also set
+   as well, unless --setgroup is also specified.
+
+.. option:: --setgroup grouporgid
+
+   Set gid after starting.  If a group name is specified the group
+   record is looked up to get a gid.
+
 .. option:: -c ceph.conf, --conf=ceph.conf
 
    Use *ceph.conf* configuration file instead of the default
@@ -58,13 +63,9 @@ Options
    Connect to specified monitor (instead of looking through
    ``ceph.conf``).
 
-.. option:: --journal-check <rank>
+.. option:: --id/-i ID
 
-    Attempt to replay the journal for MDS <rank>, then exit.
-
-.. option:: --hot-standby <rank>
-
-    Start as a hot standby for MDS <rank>.
+   Set ID portion of the MDS name.
 
 Availability
 ============

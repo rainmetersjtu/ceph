@@ -18,7 +18,7 @@
 #include "common/config.h"
 #include "include/types.h"
 
-#include "../MDS.h"
+#include "../MDSRank.h"
 #include "../LogEvent.h"
 
 class EImportFinish : public LogEvent {
@@ -32,7 +32,7 @@ class EImportFinish : public LogEvent {
 				     success(s) { }
   EImportFinish() : LogEvent(EVENT_IMPORTFINISH), base(), success(false) { }
   
-  void print(ostream& out) const {
+  void print(ostream& out) const override {
     out << "EImportFinish " << base;
     if (success)
       out << " success";
@@ -40,13 +40,14 @@ class EImportFinish : public LogEvent {
       out << " failed";
   }
 
-  void encode(bufferlist& bl) const;
-  void decode(bufferlist::iterator &bl);
-  void dump(Formatter *f) const;
-  static void generate_test_instances(list<EImportFinish*>& ls);
+  void encode(bufferlist& bl, uint64_t features) const override;
+  void decode(bufferlist::const_iterator &bl) override;
+  void dump(Formatter *f) const override;
+  static void generate_test_instances(std::list<EImportFinish*>& ls);
   
-  void replay(MDS *mds);
+  void replay(MDSRank *mds) override;
 
 };
+WRITE_CLASS_ENCODER_FEATURES(EImportFinish)
 
 #endif

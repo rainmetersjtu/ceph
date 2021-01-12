@@ -13,16 +13,16 @@
  */
 
 #include <iostream>
+#include <iterator>
 #include <sstream>
 #include <boost/scoped_ptr.hpp>
-#include "os/FileStore.h"
+#include "os/filestore/FileStore.h"
 #include "global/global_init.h"
 #include "common/ceph_argparse.h"
 #include "common/debug.h"
 #include "test/common/ObjectContents.h"
 #include "FileStoreTracker.h"
-#include "os/LevelDBStore.h"
-#include "os/KeyValueDB.h"
+#include "kv/KeyValueDB.h"
 #include "os/ObjectStore.h"
 
 void usage(const string &name) {
@@ -32,23 +32,21 @@ void usage(const string &name) {
 
 template <typename T>
 typename T::iterator rand_choose(T &cont) {
-  if (cont.size() == 0) {
-    return cont.end();
+  if (std::empty(cont)) {
+    return std::end(cont);
   }
-  int index = rand() % cont.size();
-  typename T::iterator retval = cont.begin();
-
-  for (; index > 0; --index) ++retval;
-  return retval;
+  return std::next(std::begin(cont), rand() % cont.size());
 }
 
 int main(int argc, char **argv) {
   vector<const char*> args;
   argv_to_vec(argc, (const char **)argv, args);
 
-  global_init(NULL, args, CEPH_ENTITY_TYPE_CLIENT, CODE_ENVIRONMENT_UTILITY, 0);
+  auto cct = global_init(NULL, args, CEPH_ENTITY_TYPE_CLIENT,
+			 CODE_ENVIRONMENT_UTILITY,
+			 CINIT_FLAG_NO_DEFAULT_CONFIG_FILE);
   common_init_finish(g_ceph_context);
-  g_ceph_context->_conf->apply_changes(NULL);
+  cct->_conf.apply_changes(nullptr);
 
   std::cerr << "args: " << args << std::endl;
   if (args.size() < 4) {
@@ -63,21 +61,26 @@ int main(int argc, char **argv) {
   bool start_new = false;
   if (string(args[0]) == string("new")) start_new = true;
 
-  LevelDBStore *_db = new LevelDBStore(g_ceph_context, db_path);
-  assert(!_db->create_and_open(std::cerr));
+  KeyValueDB *_db = KeyValueDB::create(g_ceph_context, "leveldb", db_path);
+  ceph_assert(!_db->create_and_open(std::cerr));
   boost::scoped_ptr<KeyValueDB> db(_db);
-  boost::scoped_ptr<ObjectStore> store(new FileStore(store_path, store_dev));
+  boost::scoped_ptr<ObjectStore> store(new FileStore(cct.get(), store_path,
+						     store_dev));
 
+  coll_t coll(spg_t(pg_t(0,12),shard_id_t::NO_SHARD));
+  ObjectStore::CollectionHandle ch;
 
   if (start_new) {
     std::cerr << "mkfs" << std::endl;
-    assert(!store->mkfs());
+    ceph_assert(!store->mkfs());
     ObjectStore::Transaction t;
-    assert(!store->mount());
-    t.create_collection(coll_t("coll"));
-    store->apply_transaction(t);
+    ceph_assert(!store->mount());
+    ch = store->create_new_collection(coll);
+    t.create_collection(coll, 0);
+    store->queue_transaction(ch, std::move(t));
   } else {
-    assert(!store->mount());
+    ceph_assert(!store->mount());
+    ch = store->open_collection(coll);
   }
 
   FileStoreTracker tracker(store.get(), db.get());
@@ -86,7 +89,7 @@ int main(int argc, char **argv) {
   for (unsigned i = 0; i < 10; ++i) {
     stringstream stream;
     stream << "Object_" << i;
-    tracker.verify("coll", stream.str(), true);
+    tracker.verify(coll, stream.str(), true);
     objects.insert(stream.str());
   }
 
@@ -95,19 +98,19 @@ int main(int argc, char **argv) {
     for (unsigned j = 0; j < 100; ++j) {
       int val = rand() % 100;
       if (val < 30) {
-	t.write("coll", *rand_choose(objects));
+	t.write(coll, *rand_choose(objects));
       } else if (val < 60) {
-	t.clone("coll", *rand_choose(objects),
+	t.clone(coll, *rand_choose(objects),
 		*rand_choose(objects));
       } else if (val < 70) {
-	t.remove("coll", *rand_choose(objects));
+	t.remove(coll, *rand_choose(objects));
       } else {
-	t.clone_range("coll", *rand_choose(objects),
+	t.clone_range(coll, *rand_choose(objects),
 		      *rand_choose(objects));
       }
     }
     tracker.submit_transaction(t);
-    tracker.verify("coll", *rand_choose(objects));
+    tracker.verify(coll, *rand_choose(objects));
   }
   return 0;
 }

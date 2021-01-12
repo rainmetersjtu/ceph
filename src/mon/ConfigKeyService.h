@@ -14,65 +14,50 @@
 #ifndef CEPH_MON_CONFIG_KEY_SERVICE_H
 #define CEPH_MON_CONFIG_KEY_SERVICE_H
 
-#include "mon/Monitor.h"
-#include "mon/QuorumService.h"
-
-#include "messages/MMonHealth.h"
-
-#include "common/config.h"
-#include "common/Formatter.h"
+#include "include/Context.h"
+#include "mon/MonOpRequest.h"
+#include "mon/MonitorDBStore.h"
 
 class Paxos;
+class Monitor;
 
-class ConfigKeyService : public QuorumService
+class ConfigKeyService
 {
-  Paxos *paxos;
-
-  int store_get(string key, bufferlist &bl);
-  void store_put(string key, bufferlist &bl, Context *cb = NULL);
-  void store_delete(string key, Context *cb = NULL);
-  void store_list(stringstream &ss);
-  bool store_exists(string key);
-
-  static const string STORE_PREFIX;
-
-protected:
-  virtual void service_shutdown() { }
-
 public:
-  ConfigKeyService(Monitor *m, Paxos *p) :
-    QuorumService(m),
-    paxos(p)
-  { }
-  virtual ~ConfigKeyService() { }
+  ConfigKeyService(Monitor &m, Paxos &p);
+  ~ConfigKeyService() {}
 
+  bool dispatch(MonOpRequestRef op);
 
-  /**
-   * @defgroup ConfigKeyService_Inherited_h Inherited abstract methods
-   * @{
-   */
-  virtual void init() { }
-  virtual void get_health(Formatter *f,
-			  list<pair<health_status_t,string> >& summary,
-                          list<pair<health_status_t,string> > *detail) { }
-  virtual bool service_dispatch(Message *m);
+  int validate_osd_destroy(const int32_t id, const uuid_d& uuid);
+  void do_osd_destroy(int32_t id, uuid_d& uuid);
+  int validate_osd_new(
+      const uuid_d& uuid,
+      const std::string& dmcrypt_key,
+      std::stringstream& ss);
+  void do_osd_new(const uuid_d& uuid, const std::string& dmcrypt_key);
 
-  virtual void start_epoch() { }
-  virtual void finish_epoch() { }
-  virtual void cleanup() { }
-  virtual void service_tick() { }
+  void get_store_prefixes(std::set<std::string>& s) const;
 
-  virtual int get_type() {
-    return QuorumService::SERVICE_CONFIG_KEY;
-  }
+private:
+  Monitor &mon;
+  Paxos &paxos;
 
-  virtual string get_name() const {
-    return "config_key";
-  }
+  bool in_quorum() const;
 
-  /**
-   * @} // ConfigKeyService_Inherited_h
-   */
+  int store_get(const std::string &key, ceph::buffer::list &bl);
+  void store_put(const std::string &key, ceph::buffer::list &bl, Context *cb = NULL);
+  void store_delete(MonitorDBStore::TransactionRef t, const std::string &key);
+  void store_delete(const std::string &key, Context *cb = NULL);
+  void store_delete_prefix(
+      MonitorDBStore::TransactionRef t,
+      const std::string &prefix);
+  void store_list(std::stringstream &ss);
+  void store_dump(std::stringstream &ss, const std::string& prefix);
+  bool store_exists(const std::string &key);
+  bool store_has_prefix(const std::string &prefix);
+
+  static const std::string STORE_PREFIX;
 };
 
 #endif // CEPH_MON_CONFIG_KEY_SERVICE_H
